@@ -5,6 +5,7 @@ Licensed under the MIT license.
 import logging
 import time
 from functools import wraps
+import os
 
 import openai
 
@@ -17,12 +18,13 @@ def retry_on_limit(func, retries=5, wait=60):
         for i in range(retries):
             try:
                 return func(*args, **kwargs)
-            except openai.error.RateLimitError as error:
+            except openai.RateLimitError as error:
                 logger.info(str(error))
                 time.sleep(wait)
-        raise openai.error.RateLimitError
+        raise openai.RateLimitError
     return wrapper
 
 
-openai_chat_completion = retry_on_limit(openai.ChatCompletion.create)
-openai_completion = retry_on_limit(openai.Completion.create)
+client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+openai_chat_completion = retry_on_limit(client.chat.completions.create)
+openai_completion = retry_on_limit(client.completions.create)

@@ -11,6 +11,7 @@ import argparse
 from enum import Enum
 from typing import List
 from collections import Counter
+import copy
 
 import openai
 from tqdm import tqdm
@@ -76,7 +77,8 @@ class OpenAIPredictor(BaseAPIPredictor):
             functions=self.api_docs,
         )
         logger.debug(f"OpenAI full response: {openai_response}")
-        openai_message = openai_response["choices"][0]["message"]
+        # import ipdb; ipdb.set_trace()
+        openai_message = openai_response.choices[0].message
         metadata = {
             "openai_request": {
                 "model": self.model,
@@ -86,13 +88,13 @@ class OpenAIPredictor(BaseAPIPredictor):
             "openai_response": openai_response
         }
         if "function_call" in openai_message:
-            function_call = openai_message["function_call"]
-            api_name = function_call["name"]
+            function_call = openai_message.function_call
+            api_name = function_call.name
             try:
-                parameters = json.loads(function_call["arguments"])
+                parameters = json.loads(function_call.arguments)
             except json.decoder.JSONDecodeError:
                 # check termination reason
-                logger.info(f"Failed to decode arguments for {api_name}: {function_call['arguments']}")
+                logger.info(f"Failed to decode arguments for {api_name}: {function_call.arguments}")
                 parameters = None
             return {
                 "role": "api",
@@ -106,7 +108,7 @@ class OpenAIPredictor(BaseAPIPredictor):
         else:
             return {
                 "role": "assistant",
-                "text": openai_message["content"],
+                "text": openai_message.content,
                 # store metadata about call
                 "metadata": metadata,
             }
@@ -141,11 +143,10 @@ def main(flags: List[str] = None):
     args = parser.parse_args(flags)
 
     # get api key
-    openai_key = os.environ.get("OPENAI_KEY", None)
+    openai_key = os.environ.get("OPENAI_API_KEY", None)
     if openai_key is None:
         with open(args.api_key, "r") as f:
             openai_key = f.read().strip()
-    openai.api_key = openai_key
 
     total_metrics = Counter()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -199,8 +200,12 @@ def main(flags: List[str] = None):
                             assert "match" in prediction
                             assert "bad_action" in prediction
 
+        # import ipdb; ipdb.set_trace()
         with open(output_file_path, 'w', encoding='utf-8') as writer:
-            json.dump(conversation, writer, indent=4)
+            # TODO: serialize conversation['conversation'] as  Object of type ChatCompletion is not JSON serializable
+            dummy_dict = copy.deepcopy(conversation)
+            dummy_dict.pop("conversation")
+            json.dump(dummy_dict, writer, indent=4)
 
     logger.info("Finished processing conversations")
     if EvalModes.EVALUATE in args.modes:
